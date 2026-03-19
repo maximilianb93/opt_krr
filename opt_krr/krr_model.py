@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from numpy.core.multiarray import _reconstruct, scalar  # Common culprits
+import torch.serialization  
 
 class KernelRidgeRegression(nn.Module):
     def __init__(self, kernel='linear', lambda_=1.0, gamma=None, degree=3, coef0=1, input_dim=1):
@@ -82,7 +84,7 @@ class KernelRidgeRegression(nn.Module):
             'state_dict': self.state_dict(),
             'kernel': self.kernel,
             'lambda_': self.lambda_.item(),
-            'gamma': self.gamma.detach().cpu().numpy(),
+            'gamma': self.gamma.detach().cpu(),
             'degree': self.degree,
             'coef0': self.coef0,
             'X_ref': self.X_ref,
@@ -92,7 +94,8 @@ class KernelRidgeRegression(nn.Module):
 
     @classmethod
     def load(cls, path, input_dim=1):
-        model_data = torch.load(path)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model_data = torch.load(path, map_location=device)
         model = cls(
             kernel=model_data['kernel'],
             lambda_=model_data['lambda_'],
