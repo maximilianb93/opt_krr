@@ -3,7 +3,7 @@ import torch.nn as nn
 import lightning
 from opt_krr.utils import linear_kernel, polynomial_kernel, rbf_kernel, lap_kernel
 
-class KernelRidgeRegression(nn.Module):
+class KernelRidgeRegression(lightning.LightningModule):
     def __init__(
             self,
             X_ref=None,
