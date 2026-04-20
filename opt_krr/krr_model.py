@@ -1,20 +1,21 @@
 import torch
 import torch.nn as nn
 import lightning
+from lightning.pytorch import loggers as pl_loggers
 from opt_krr.utils import linear_kernel, polynomial_kernel, rbf_kernel, lap_kernel
 
 class KernelRidgeRegression(lightning.LightningModule):
     def __init__(
             self,
-            X_ref=None,
-            y_ref=None, 
-            kernel='lap', 
-            lambda_=None, 
-            gamma=None, 
-            degree: torch.Tensor = torch.tensor([3], dtype=torch.int32),
-            coef0: torch.Tensor = torch.tensor([1.0], dtype=torch.float32), 
-            input_dim: torch.Tensor = torch.tensor([1], dtype=torch.int32),
-            loss_type="l1",
+            X_ref : torch.Tensor,
+            y_ref: torch.Tensor, 
+            lambda_: torch.Tensor = None, 
+            gamma: torch.Tensor = None, 
+            kernel: str='lap', 
+            degree : torch.Tensor = torch.tensor([3], dtype=torch.int32),
+            coef0 : torch.Tensor = torch.tensor([1.0], dtype=torch.float32), 
+            input_dim : torch.Tensor = torch.tensor([1], dtype=torch.int32),
+            loss_type : str ="l1",
             ):
         super(KernelRidgeRegression, self).__init__()
         self.kernel = kernel
@@ -42,8 +43,7 @@ class KernelRidgeRegression(lightning.LightningModule):
         elif loss_type == "l2":
             self.loss_fn = nn.MSELoss()
 
-    
-    def _kernel_function(self, X, Y):
+    def _kernel_function(self, X, Y) -> torch.Tensor:
         if self.kernel == 'linear':
             return linear_kernel(X, Y)
         elif self.kernel == 'poly':
@@ -55,7 +55,7 @@ class KernelRidgeRegression(lightning.LightningModule):
         else:
             raise ValueError(f"Unknown kernel: {self.kernel}")
     
-    def fit(self, solver="leastsquares"):
+    def fit(self, solver="leastsquares") -> None:
         K = self._kernel_function(self.X_ref, self.X_ref)
         n = K.shape[0]
         I = torch.eye(n, device=K.device)
@@ -66,18 +66,22 @@ class KernelRidgeRegression(lightning.LightningModule):
         else:
             raise ValueError(f"Unknown solver: {solver}")
     
-    def predict(self, X):
+    def predict(self, X) -> torch.Tensor:
         K = self._kernel_function(X, self.X_ref)
         return torch.matmul(K, self.alpha_)
 
-    def forward(self, X):
+    def forward(self, X) -> torch.Tensor:
         return self.predict(X)
     
-    def training_step(self, train_batch, batch_idx):
+    def on_train_epoch_start(self):
+        with torch.no_grad():  # Disable gradient tracking
+            self.fit()
+
+    def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         x = train_batch["data"]
         y = train_batch["target"]
         # =================forward====================
-        self.fit()
+        #self.fit()
         y_train_pred = self.predict(x)
 
         # ===================loss=====================
@@ -85,10 +89,21 @@ class KernelRidgeRegression(lightning.LightningModule):
 
         # ====================log=====================+
         name = "train" if self.training else "valid"
-        self.log(f"{name}_loss", loss, on_epoch=True)
+        self.log(f"{name}_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
+        return loss
+    
+    def test_step(self, test_batch, batch_idx) -> torch.Tensor:
+        x = test_batch["data"]
+        y = test_batch["target"]
+        # =================predict====================
+        y_test_pred = self.predict(x)
+        # ===================loss=====================
+        loss = self.loss_fn(y_test_pred, y)
+        # ====================log=====================
+        self.log("test_loss", loss)
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> tuple:
         """
         Initialize the optimizer based on self._optimizer_name and self.optimizer_kwargs.
         It also adds the learning rate scheduler if self.lr_scheduler_kwargs is not empty.
@@ -133,7 +148,7 @@ class KernelRidgeRegression(lightning.LightningModule):
             lr_scheduler_config.update(self.lr_scheduler_config)
         return [optimizer], [lr_scheduler_config]
 
-    def save(self, path):
+    def save(self, path) -> None:
         model_data = {
             'state_dict': self.state_dict(),
             'kernel': self.kernel,
