@@ -79,14 +79,11 @@ class KernelRidgeRegression(lightning.LightningModule):
     def forward(self, X) -> torch.Tensor:
         return self.predict(X)
 
-    def on_train_epoch_start(self):
-        with torch.no_grad():  # Disable gradient tracking
-            self.fit()
-
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         x = train_batch["data"]
         y = train_batch["target"]
         # =================forward====================
+        self.fit()
         y_train_pred = self.predict(x)
 
         # ===================loss=====================
@@ -95,6 +92,11 @@ class KernelRidgeRegression(lightning.LightningModule):
         # ====================log=====================+
         name = "train" if self.training else "valid"
         self.log(f"{name}_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
+        ### if end of epoch, log the kernel parameters
+        if (batch_idx + 1) % len(self.trainer.datamodule.train_dataloader()) == 0:
+            print(
+                f"Training Error: {loss.item():.4f}, lambda: {self.lambda_.item():.4f}"
+            )
         return loss
 
     def test_step(self, test_batch, batch_idx) -> torch.Tensor:
