@@ -9,11 +9,11 @@ class KernelRidgeRegression(lightning.LightningModule):
             X_ref=None,
             y_ref=None, 
             kernel='lap', 
-            lambda_=1.0, 
+            lambda_=None, 
             gamma=None, 
-            degree=3, 
-            coef0=1, 
-            input_dim=1,
+            degree: torch.Tensor = torch.tensor([3], dtype=torch.int32),
+            coef0: torch.Tensor = torch.tensor([1.0], dtype=torch.float32), 
+            input_dim: torch.Tensor = torch.tensor([1], dtype=torch.int32),
             loss_type="l1",
             ):
         super(KernelRidgeRegression, self).__init__()
