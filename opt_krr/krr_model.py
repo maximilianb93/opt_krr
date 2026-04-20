@@ -15,13 +15,14 @@ class KernelRidgeRegression(lightning.LightningModule):
         degree: torch.Tensor = torch.tensor([3], dtype=torch.int32),
         coef0: torch.Tensor = torch.tensor([1.0], dtype=torch.float32),
         input_dim: torch.Tensor = torch.tensor([1], dtype=torch.int32),
+        return_gradient_norm: bool = False,
         loss_type: str = "l1",
     ):
         super(KernelRidgeRegression, self).__init__()
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
-
+        self.return_gradient_norm = return_gradient_norm
         self.register_buffer("X_ref", X_ref)
         self.register_buffer("y_ref", y_ref)
         self.register_buffer("alpha_", None)
@@ -77,7 +78,19 @@ class KernelRidgeRegression(lightning.LightningModule):
         return torch.matmul(K, self.alpha_)
 
     def forward(self, X) -> torch.Tensor:
-        return self.predict(X)
+        if self.return_gradient_norm:
+            X.requires_grad_(True)
+            output = self.predict(X)
+            grad = torch.autograd.grad(
+                outputs=output,
+                inputs=X,
+                grad_outputs=torch.ones_like(output),
+                create_graph=True,
+            )[0]
+            grad_norm = torch.norm(grad, p=2, dim=1, keepdim=True)
+            return grad_norm
+        else:
+            return self.predict(X)
 
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         x = train_batch["data"]
