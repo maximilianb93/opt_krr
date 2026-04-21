@@ -51,6 +51,7 @@ docs/_build/
 
 # Pytorch models
 *.pth
+*.pt
 
 # vscode workspace settings
 .vscode

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import lightning
 from opt_krr.utils import linear_kernel, polynomial_kernel, rbf_kernel, lap_kernel
+from typing import List, Optional
 
 
 class KernelRidgeRegression(lightning.LightningModule):
@@ -77,20 +78,27 @@ class KernelRidgeRegression(lightning.LightningModule):
         K = self._kernel_function(X, self.X_ref)
         return torch.matmul(K, self.alpha_)
 
-    def forward(self, X) -> torch.Tensor:
+    def forward(self, X: torch.Tensor):
         if self.return_gradient_norm:
-            X.requires_grad_(True)
+            X = X.requires_grad_(True)
             output = self.predict(X)
-            grad = torch.autograd.grad(
-                outputs=output,
-                inputs=X,
-                grad_outputs=torch.ones_like(output),
-                create_graph=True,
-            )[0]
+
+            grad_outputs = torch.jit.annotate(
+                List[Optional[torch.Tensor]], [torch.ones_like(output)]
+            )
+
+            grad_list = torch.autograd.grad(
+                [output], [X], grad_outputs=grad_outputs, create_graph=True
+            )
+            grad = grad_list[0]
+
+            if grad is None:
+                grad = torch.zeros_like(X)
+
             grad_norm = torch.norm(grad, p=2, dim=1, keepdim=True)
-            return grad_norm
+            return output, grad_norm
         else:
-            return self.predict(X)
+            return self.predict(X), None
 
     def training_step(self, train_batch, batch_idx) -> torch.Tensor:
         x = train_batch["data"]
