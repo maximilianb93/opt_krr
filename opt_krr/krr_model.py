@@ -18,6 +18,8 @@ class KernelRidgeRegression(lightning.LightningModule):
         input_dim: torch.Tensor = torch.tensor([1], dtype=torch.int32),
         return_gradient_norm: bool = False,
         loss_type: str = "l1",
+        optimizer_name: str = "Adam",
+        optimizer_lr: float = 1e-2,
     ):
         super(KernelRidgeRegression, self).__init__()
         self.kernel = kernel
@@ -36,8 +38,8 @@ class KernelRidgeRegression(lightning.LightningModule):
         self.gamma = nn.Parameter(gamma, requires_grad=True)
 
         # OPTIM
-        self._optimizer_name = "Adam"
-        self.optimizer_kwargs = {}
+        self._optimizer_name = optimizer_name
+        self.optimizer_kwargs = {"lr": optimizer_lr}
         self.lr_scheduler_kwargs = {}
         self.lr_scheduler_config = {}
         if loss_type not in ["l1", "l2"]:
