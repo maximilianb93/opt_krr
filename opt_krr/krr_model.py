@@ -64,7 +64,7 @@ class KernelRidgeRegression(lightning.LightningModule):
     def fit(self, solver="leastsquares") -> None:
         K = self._kernel_function(self.X_ref, self.X_ref)
         n = K.shape[0]
-        I = torch.eye(n)
+        I = torch.eye(n).to(self.device)
         if solver == "direct":
             self.alpha_ = torch.linalg.solve(
                 K + torch.abs(self.lambda_) * I, self.y_ref
