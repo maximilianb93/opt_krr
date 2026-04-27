@@ -49,6 +49,8 @@ class KernelRidgeRegression(lightning.LightningModule):
         elif loss_type == "l2":
             self.loss_fn = nn.MSELoss()
 
+        self.fit()
+
     def _kernel_function(self, X, Y) -> torch.Tensor:
         if self.kernel == "linear":
             return linear_kernel(X, Y)
@@ -114,7 +116,7 @@ class KernelRidgeRegression(lightning.LightningModule):
 
         # ====================log=====================+
         name = "train" if self.training else "valid"
-        self.log(f"{name}_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
+        self.log("train_loss", loss, on_epoch=True, prog_bar=True, on_step=False, logger=False)
         ### if end of epoch, log the kernel parameters
         if (batch_idx + 1) % len(self.trainer.datamodule.train_dataloader()) == 0:
             print(
@@ -141,8 +143,18 @@ class KernelRidgeRegression(lightning.LightningModule):
         # ===================loss=====================
         loss = self.loss_fn(y_val_pred, y)
         # ====================log=====================
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True, on_step=False, logger=False)
         return loss
+
+    def on_train_epoch_end(self):
+        # ====================log=====================
+        train_loss = self.trainer.callback_metrics.get("train_loss")
+        val_loss = self.trainer.callback_metrics.get("val_loss")
+        if train_loss is not None and val_loss is not None:
+            self.log_dict({
+              "train_loss": train_loss,
+              "val_loss": val_loss,
+              })
 
     def configure_optimizers(self) -> tuple:
         """
