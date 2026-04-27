@@ -118,7 +118,7 @@ class KernelRidgeRegression(lightning.LightningModule):
         ### if end of epoch, log the kernel parameters
         if (batch_idx + 1) % len(self.trainer.datamodule.train_dataloader()) == 0:
             print(
-                f"Training Error: {loss.item():.4f}, lambda: {self.lambda_.item():.4f}"
+                f"Epoch: {self.current_epoch}, Training Error: {loss.item():.4f}, lambda: {self.lambda_.item():.4f}"
             )
         return loss
 
@@ -131,6 +131,17 @@ class KernelRidgeRegression(lightning.LightningModule):
         loss = self.loss_fn(y_test_pred, y)
         # ====================log=====================
         self.log("test_loss", loss)
+        return loss
+
+    def validation_step(self, val_batch, batch_idx) -> torch.Tensor:
+        x = val_batch["data"]
+        y = val_batch["target"]
+        # =================predict====================
+        y_val_pred = self.predict(x)
+        # ===================loss=====================
+        loss = self.loss_fn(y_val_pred, y)
+        # ====================log=====================
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True, on_step=False)
         return loss
 
     def configure_optimizers(self) -> tuple:
