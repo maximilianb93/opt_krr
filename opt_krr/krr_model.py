@@ -52,7 +52,6 @@ class KernelRidgeRegression(lightning.LightningModule):
 
         self.fit()
 
-
     def _kernel_function(self, X, Y) -> torch.Tensor:
         if self.kernel == "linear":
             return linear_kernel(X, Y)
@@ -118,7 +117,14 @@ class KernelRidgeRegression(lightning.LightningModule):
 
         # ====================log=====================+
         name = "train" if self.training else "valid"
-        self.log("train_loss", loss, on_epoch=True, prog_bar=True, on_step=False, logger=False)
+        self.log(
+            "train_loss",
+            loss,
+            on_epoch=True,
+            prog_bar=True,
+            on_step=False,
+            logger=False,
+        )
         ### if end of epoch, log the kernel parameters
         if (batch_idx + 1) % len(self.trainer.datamodule.train_dataloader()) == 0:
             print(
@@ -145,7 +151,9 @@ class KernelRidgeRegression(lightning.LightningModule):
         # ===================loss=====================
         loss = self.loss_fn(y_val_pred, y)
         # ====================log=====================
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True, on_step=False, logger=False)
+        self.log(
+            "val_loss", loss, on_epoch=True, prog_bar=True, on_step=False, logger=False
+        )
         return loss
 
     def on_train_epoch_end(self):
@@ -153,10 +161,12 @@ class KernelRidgeRegression(lightning.LightningModule):
         train_loss = self.trainer.callback_metrics.get("train_loss")
         val_loss = self.trainer.callback_metrics.get("val_loss")
         if train_loss is not None and val_loss is not None:
-            self.log_dict({
-              "train_loss": train_loss,
-              "val_loss": val_loss,
-              })
+            self.log_dict(
+                {
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                }
+            )
 
     def configure_optimizers(self) -> tuple:
         """
@@ -204,33 +214,3 @@ class KernelRidgeRegression(lightning.LightningModule):
                 )
             lr_scheduler_config.update(self.lr_scheduler_config)
         return [optimizer], [lr_scheduler_config]
-
-    def save(self, path) -> None:
-        model_data = {
-            "state_dict": self.state_dict(),
-            "kernel": self.kernel,
-            "lambda_": self.lambda_.item(),
-            "gamma": self.gamma.detach().cpu(),
-            "degree": self.degree,
-            "coef0": self.coef0,
-            "X_ref": self.X_ref,
-            "alpha_": self.alpha_,
-        }
-        torch.save(model_data, path)
-
-    @classmethod
-    def load(cls, path, input_dim=1, weights_only=True):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model_data = torch.load(path, map_location=device, weights_only=weights_only)
-        model = cls(
-            kernel=model_data["kernel"],
-            lambda_=model_data["lambda_"],
-            gamma=torch.tensor(model_data["gamma"]),
-            degree=model_data["degree"],
-            coef0=model_data["coef0"],
-            input_dim=input_dim,
-        )
-        model.load_state_dict(model_data["state_dict"])
-        model.X_ref = model_data["X_ref"]
-        model.alpha_ = model_data["alpha_"]
-        return model
