@@ -22,6 +22,7 @@ class KernelRidgeRegression(lightning.LightningModule):
         optimizer_lr: float = 1e-2,
     ):
         super(KernelRidgeRegression, self).__init__()
+        self.save_hyperparameters(ignore=["X_ref", "y_ref"])
         self.kernel = kernel
         self.degree = degree
         self.coef0 = coef0
@@ -50,6 +51,7 @@ class KernelRidgeRegression(lightning.LightningModule):
             self.loss_fn = nn.MSELoss()
 
         self.fit()
+
 
     def _kernel_function(self, X, Y) -> torch.Tensor:
         if self.kernel == "linear":
