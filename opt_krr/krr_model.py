@@ -20,6 +20,8 @@ class KernelRidgeRegression(lightning.LightningModule):
         loss_type: str = "l1",
         optimizer_name: str = "Adam",
         optimizer_lr: float = 1e-2,
+        lambda_batches_per_epoch: int = 1,
+        refit_alpha_on_eval: bool = True,
     ):
         super(KernelRidgeRegression, self).__init__()
         self.save_hyperparameters(ignore=["X_ref", "y_ref"])
@@ -27,9 +29,13 @@ class KernelRidgeRegression(lightning.LightningModule):
         self.degree = degree
         self.coef0 = coef0
         self.return_gradient_norm = return_gradient_norm
+        self.lambda_batches_per_epoch = max(1, int(lambda_batches_per_epoch))
+        self.refit_alpha_on_eval = refit_alpha_on_eval
         self.register_buffer("X_ref", X_ref)
         self.register_buffer("y_ref", y_ref)
         self.register_buffer("alpha_", None)
+        self._lambda_batch_limit = 1
+        self._gamma_phase_started = False
 
         self.lambda_ = nn.Parameter(
             torch.tensor(lambda_, dtype=torch.float32), requires_grad=True
@@ -51,6 +57,14 @@ class KernelRidgeRegression(lightning.LightningModule):
             self.loss_fn = nn.MSELoss()
 
         self.fit()
+
+    def _set_lambda_phase(self) -> None:
+        self.lambda_.requires_grad_(True)
+        self.gamma.requires_grad_(False)
+
+    def _set_gamma_phase(self) -> None:
+        self.lambda_.requires_grad_(False)
+        self.gamma.requires_grad_(True)
 
     def _kernel_function(self, X, Y) -> torch.Tensor:
         if self.kernel == "linear":
@@ -80,6 +94,10 @@ class KernelRidgeRegression(lightning.LightningModule):
             raise ValueError(f"Unknown solver: {solver}")
 
     def predict(self, X) -> torch.Tensor:
+        if self.alpha_ is None:
+            raise RuntimeError(
+                "alpha_ is not initialized. Call fit() before predict()."
+            )
         K = self._kernel_function(X, self.X_ref)
         return torch.matmul(K, self.alpha_)
 
@@ -109,19 +127,31 @@ class KernelRidgeRegression(lightning.LightningModule):
         x = train_batch["data"]
         y = train_batch["target"]
         # =================forward====================
-        self.fit()
+        if batch_idx >= self._lambda_batch_limit and not self._gamma_phase_started:
+            self.alpha_ = self.alpha_.detach()
+            self._set_gamma_phase()
+            self._gamma_phase_started = True
+
         y_train_pred = self.predict(x)
 
         # ===================loss=====================
         loss = self.loss_fn(y_train_pred, y)
 
-        # ====================log=====================+
-        name = "train" if self.training else "valid"
+        # ====================log=====================
+        phase = "lambda" if batch_idx < self._lambda_batch_limit else "gamma"
         self.log(
             "train_loss",
             loss,
             on_epoch=True,
             prog_bar=True,
+            on_step=False,
+            logger=False,
+        )
+        self.log(
+            f"train_loss_{phase}",
+            loss,
+            on_epoch=True,
+            prog_bar=False,
             on_step=False,
             logger=False,
         )
@@ -131,6 +161,23 @@ class KernelRidgeRegression(lightning.LightningModule):
                 f"Epoch: {self.current_epoch}, Training Error: {loss.item():.4f}, lambda: {self.lambda_.item():.4f}"
             )
         return loss
+
+    def on_train_epoch_start(self) -> None:
+        train_batches = len(self.trainer.datamodule.train_dataloader())
+        self._lambda_batch_limit = min(self.lambda_batches_per_epoch, train_batches)
+        self._gamma_phase_started = False
+        self._set_lambda_phase()
+        self.fit()
+
+    def on_validation_epoch_start(self) -> None:
+        if self.refit_alpha_on_eval:
+            with torch.no_grad():
+                self.fit()
+
+    def on_test_epoch_start(self) -> None:
+        if self.refit_alpha_on_eval:
+            with torch.no_grad():
+                self.fit()
 
     def test_step(self, test_batch, batch_idx) -> torch.Tensor:
         x = test_batch["data"]
