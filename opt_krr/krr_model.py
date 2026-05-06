@@ -34,6 +34,7 @@ class KernelRidgeRegression(lightning.LightningModule):
         self.register_buffer("X_ref", X_ref)
         self.register_buffer("y_ref", y_ref)
         self.register_buffer("alpha_", None)
+        self.register_buffer("I", torch.eye(self.X_ref.shape[0]))
         self._lambda_batch_limit = 1
         self._gamma_phase_started = False
 
@@ -81,14 +82,13 @@ class KernelRidgeRegression(lightning.LightningModule):
     def fit(self, solver="leastsquares") -> None:
         K = self._kernel_function(self.X_ref, self.X_ref)
         n = K.shape[0]
-        I = torch.eye(n).to(self.device)
         if solver == "direct":
             self.alpha_ = torch.linalg.solve(
-                K + torch.abs(self.lambda_) * I, self.y_ref
+                K + torch.abs(self.lambda_) * self.I, self.y_ref
             )
         elif solver == "leastsquares":
             self.alpha_ = torch.linalg.lstsq(
-                K + torch.abs(self.lambda_) * I, self.y_ref
+                K + torch.abs(self.lambda_) * self.I, self.y_ref
             ).solution
         else:
             raise ValueError(f"Unknown solver: {solver}")
